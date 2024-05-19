@@ -3,9 +3,9 @@
 // Company: 
 // Engineer: 
 // 
-// Create Date: 15.05.2024 22:09:01
+// Create Date: 15.05.2024 22:17:59
 // Design Name: 
-// Module Name: reg_file
+// Module Name: fifo_ctrl
 // Project Name: 
 // Target Devices: 
 // Tool Versions: 
@@ -20,27 +20,84 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 
-module reg_file
-    #(parameter ADDR_WIDTH = 3, DATA_WIDTH = 8)
+module fifo_ctrl
+    #(parameter ADDR_WIDTH = 3)
     (
-    input logic clk,
-    input logic w_en,
-    input logic [ADDR_WIDTH - 1 : 0] r_addr,    //reading address
-    input logic [ADDR_WIDTH - 1 : 0] w_addr,    //writing address
-    input logic [DATA_WIDTH - 1 : 0] w_data,
-    output logic [DATA_WIDTH - 1 : 0] r_data
+    input logic clk, reset,
+    input logic wr, rd,
+    output logic full, empty,
+    output logic [ADDR_WIDTH -1 : 0] w_addr,
+    output logic [ADDR_WIDTH - 1 : 0] r_addr
     );
     
-    //signal declaration 
-    logic [DATA_WIDTH - 1 : 0] memory [0 : 2 ** ADDR_WIDTH - 1];
+    logic [ADDR_WIDTH - 1 : 0] wr_ptr, wr_ptr_next;
+    logic [ADDR_WIDTH - 1 : 0] rd_ptr, rd_ptr_next;
     
-    //write operation
-    always_ff @(posedge clk)
+    logic full_next;
+    logic empty_next;
+    
+    always_ff @(posedge clk, posedge reset)
     begin
-        if(w_en)
-            memory[w_addr] <= w_data;
-    end
-        
-    //read operation 
-    assign r_data = memory[r_addr];        
+        if (reset)
+            begin
+                wr_ptr <= 0;
+                rd_ptr <= 0;
+                full <= 1'b0;
+                empty <= 1'b1;
+            end
+            else
+            begin
+                wr_ptr <= wr_ptr_next;
+                rd_ptr <= rd_ptr_next;
+                full <= full_next;
+                empty <= empty_next;
+            end
+     end
+     
+     always_comb 
+     begin
+     //defaults
+     wr_ptr_next = wr_ptr;
+     rd_ptr_next = rd_ptr;
+     full_next = full;
+     empty_next = empty;
+     
+     case({wr, rd})
+        2'b01: //read
+        begin
+        if(~empty)
+        begin
+            rd_ptr_next = rd_ptr +1;
+            full_next = 1'b0;
+            if(rd_ptr_next == wr_ptr)
+                empty_next = 1'b1;
+            end
+        end
+        2'b10:  //write
+        begin
+            if(~full)
+            begin
+              wr_ptr_next = wr_ptr + 1;
+              empty_next = 1'b0;
+              if (wr_ptr_next == rd_ptr)
+                full_next = 1'b1;
+            end
+        end
+        2'b11:  //read & write simultaneously
+        begin 
+            if(empty)
+            begin
+                wr_ptr_next = wr_ptr;
+                rd_ptr_next = rd_ptr;
+            end
+            wr_ptr_next = wr_ptr + 1;
+            rd_ptr_next = rd_ptr + 1;
+        end
+        default: ;//2'b00
+     endcase
+     
+     //outputs
+     assign w_addr = wr_ptr;
+     assign r_addr = rd_ptr;
+     end
 endmodule
